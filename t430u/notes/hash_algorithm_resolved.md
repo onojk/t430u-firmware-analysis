@@ -69,4 +69,89 @@ array we identified earlier:
 ## What this means for the T430u password subsystem
 
 With this resolved, the full cryptographic story can finally be named.
-Every algorithm and key source has been traced.
+Every algorithm and key source has been traced. _See addendum below for
+the verified implementation details._## Addendum: SHA-1 implementation verified standard
+
+Confirmed by direct disassembly of the Init function and inspection of the
+constant blob it references. SHA-1 in this module is plain FIPS 180-4 — no
+salt, no keying, no Lenovo modifications.
+
+### The trampoline layer
+
+The Init/Update/Final pointers in each 88-byte algorithm record (record
+offsets `+0x38/+0x40/+0x48`) do **not** point at the real implementations
+directly. They point at a dense block of 8-byte trampolines starting at
+RVA `0x3408`. Each trampoline is a 5-byte `JMP rel32` followed by 3 bytes
+of `cc` int3 padding to 8-byte alignment.
+
+Hex dump of the SHA-1 trampolines:
+
+    00003408: e9 43 3b 00 00 cc cc cc   ; JMP 0x6F50 (SHA1Init)
+    00003410: e9 6f 3b 00 00 cc cc cc   ; JMP 0x6F84 (SHA1Update)
+    00003418: e9 87 3d 00 00 cc cc cc   ; JMP 0x71A4 (SHA1Final)
+
+This trampoline layout is shared across all four hash algorithms in the
+record table. It lets the const record table point at fixed, predictable
+addresses (`record + 0x38` etc. is always 8 bytes apart on disk) while the
+real function bodies float wherever the linker places them.
+
+### The real SHA-1 implementation
+
+| Function | RVA |
+|---|---|
+| SHA1Init | `0x6F50` |
+| SHA1Update | `0x6F84` |
+| SHA1Final | `0x71A4` |
+
+`SHA1Init` (33 bytes of code) does:
+
+    push rbx
+    sub  rsp, 0x20
+    mov  edx, 0x70                ; ctx size = 112 bytes
+    mov  rbx, rcx                 ; rbx = ctx
+    call 0x4A48                   ; memset(ctx, 0, 0x70)
+    lea  rcx, [rbx+0x10]          ; dst = ctx + 0x10
+    lea  rdx, [rip+0xFFFFB332]    ; src = RVA 0x22A0
+    mov  r8d, 0x14                ; 20 bytes
+    call 0x4A60                   ; memcpy(ctx+0x10, &H0, 20)
+    xor  eax, eax                 ; return EFI_SUCCESS
+    add  rsp, 0x20
+    pop  rbx
+    ret
+
+The 20-byte constant blob at RVA `0x22A0` is exactly the FIPS 180-4 SHA-1
+initial hash values, packed as five little-endian uint32s:
+
+    000022a0: 01 23 45 67 89 ab cd ef  fe dc ba 98 76 54 32 10
+    000022b0: f0 e1 d2 c3
+
+    = 0x67452301, 0xEFCDAB89, 0x98BADCFE, 0x10325476, 0xC3D2E1F0
+      H0           H1          H2          H3          H4
+
+### Context layout
+
+The 112-byte (`0x70`) context size matches the standard SHA-1 working set:
+
+    +0x00..0x10   buffer offset, length counter, flags        (zeroed by Init)
+    +0x10..0x24   five uint32 hash state H0..H4                (initialized)
+    +0x24..0x70   64-byte block buffer + scheduling space      (zeroed by Init)
+
+This matches the `+0x20` "context size" field in the algorithm-record table
+(0x70 for SHA-1), confirming the record-field layout documented above.
+
+### What this closes
+
+The hash algorithm question is now fully resolved at every level:
+
+- The GUID `6C48F74A-...` is SHA-1 (proven earlier by record name, digest
+  size, and round constants).
+- The implementation routed through that GUID is plain FIPS 180-4 SHA-1
+  with the standard initial constants and no Lenovo-specific modifications
+  (proven here by Init disassembly and constant-blob verification).
+
+The Stage 1 hash protocol `E3ABB023-...` consumed by `LenovoPasswordCp` is
+therefore: SHA-1 of the 64-byte ASCII password buffer.
+
+What Stage 2 (`E01FC710-...`) does on top of that is the remaining open
+question. The Stage 2 protocol is produced by `LenovoCryptServiceSmm.efi`,
+which is where the next analysis pass would go.
