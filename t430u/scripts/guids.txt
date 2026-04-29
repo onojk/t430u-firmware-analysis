@@ -1,0 +1,63 @@
+# T430u firmware GUID annotation database
+# Format: GUID<whitespace>description
+# One entry per line. Lines starting with # are comments.
+# Feed to pe_inspect.py via --guid-db guids.txt
+#
+# Sourced from t430u/notes/*.md. GUIDs without an identified role are omitted.
+
+# ── Password hash protocols ───────────────────────────────────────────────────
+
+E3ABB023-B8B1-4696-98E1-8EEDC3D3C63D  Hash stage 1 protocol (password → 16-byte digest, stage 1; produced by LenovoCryptServiceSmm.efi, consumed by PasswordCp + HpmDxe + SetupSecurityDxe)
+E01FC710-BA41-493B-A919-53583368F6D9  Hash stage 2 protocol (password → 16-byte digest, stage 2; produced by LenovoCryptServiceSmm.efi; SMM-resident so not in DXE depexes)
+
+# ── Hash algorithm infrastructure ─────────────────────────────────────────────
+
+6C48F74A-B4DF-461F-80C4-5CAE8A85B7EE  SHA-1 algorithm GUID (Lenovo hash dispatcher; implemented in SystemCryptSvcRt.efi; identified by "SHA1" UTF-16 label + K constants + 20-byte digest size)
+2D6C43DA-2CCE-4298-9BA3-4B56E46433FF  MD5 algorithm GUID (SystemCryptSvcRt.efi record table; 16-byte digest)
+991595D2-DE11-41E7-B3DD-759149251761  SHA-256 algorithm GUID (SystemCryptSvcRt.efi record table; 32-byte digest)
+69188A5F-6BBD-46C7-9C16-55F194BEFCDF  Hash dispatcher protocol (multi-algorithm EFI_HASH2-style; takes algorithm GUID as parameter; used by CryptService DXE + CryptService SMM)
+D0B3D668-16CF-4FEB-95F5-1CA3693CFE56  Lenovo hash service container protocol (located alongside 69188A5F by CryptService DXE FUN_00002994)
+DBFF9D55-89B7-46DA-BDDF-677D3DC0241D  Named-service registry protocol (service locator; CryptService DXE looks up 15E896BE within this registry)
+15E896BE-0CDF-47E2-9B97-A28A398BC765  Hash service name within DBFF9D55 registry (passed as parameter, not located as protocol)
+
+# ── CryptService DXE protocol and AES keys ───────────────────────────────────
+
+73E47354-B0C5-4E00-A714-9D0D5A4FDBFD  LenovoCryptoService DXE protocol (installed by LenovoCryptService.efi; 4-method table at .text:0x240: hash, AES-CBC-encrypt, AES-CBC-decrypt, second hash)
+72108931-4788-4F9A-81A1-00772CCDACC5  AES key selector GUID #1 (CryptService DXE FUN_00002B80; selects DAT_4B10 = Hash(EC[0x62..0x69] XOR CMOS))
+7E8DA88C-A95C-41B6-8C99-430C4693119E  AES key selector GUID #2 (CryptService DXE FUN_00002B80; selects DAT_4B00 = second SVP key bank)
+
+# ── SVP storage and EC mailbox ────────────────────────────────────────────────
+
+82B244DC-8503-454B-A96A-D0D2E00BF86A  SVP storage protocol (produced by LenovoSvpManagerSmm.efi; consumed by 24 modules including TPM, theft-tracking, and firmware-update paths)
+0DE8BACF-E00A-4538-BE0D-81AF9374FCC9  Lenovo EC mailbox / EEPROM I/O protocol (single function: (self, sub_cmd, byte_offset, &buf); likely produced by LenovoMailBoxSmm.efi)
+
+# ── Shared protocols across PasswordCp + SvpManager cluster ──────────────────
+
+13DC32CC-A8DF-425A-B775-F16C14B9C7D1  Shared Lenovo protocol (PasswordCp + SvpManager; appears to be setup-browser callback registry where PasswordCp registers itself)
+2846B2A8-77C8-4432-86EC-199F205D37CA  Shared Lenovo protocol (PasswordCp + SvpManager; role not yet traced)
+65FB555D-5CCA-40C3-9967-227988288DD8  Shared Lenovo protocol (PasswordCp + SvpManager; role not yet traced)
+FE2965BB-5A8E-43B3-AEDD-ABCC63003D14  Gating event GUID (CryptServiceSmm RegisterProtocolNotify load-order gate; also appears in PasswordCp data)
+B2D39F58-0D08-41AF-8CA0-AF728BCC02A7  Event/notify GUID (SvpManagerSmm + SvpManagerDxe; role not yet traced)
+
+# ── SMM infrastructure ────────────────────────────────────────────────────────
+
+9F5E8C5E-0373-4A08-8DB5-1F913316C5E4  SMI handler registration protocol (used by CryptServiceSmm to register SMI commands 0x83/0x8F/0x90; also used by SvpManagerSmm for command 0x05)
+1390954D-DA95-4227-9328-7282C217DAA8  Lenovo SMM prerequisite protocol (located by CryptServiceSmm init; shared across credential-handling stack)
+6AFD2B77-98C1-4ACD-A6F9-8A9439DE0FB1  Lenovo SMM prerequisite protocol (located by CryptServiceSmm init; shared across credential-handling stack)
+4C8A2451-C207-405B-9694-99EA13251341  Lenovo SMM prerequisite protocol (located by CryptServiceSmm init; shared across credential-handling stack)
+BC62157E-3E33-4FEC-9920-2D3B36D750DF  Lenovo proprietary SMM protocol (located by CryptServiceSmm init; role not yet traced)
+
+# ── PasswordCp-specific ───────────────────────────────────────────────────────
+
+56350810-2CB2-4AA0-96D2-66D1B8E1AAC2  UI/render protocol (PasswordCp; located via LocateProtocol; drives setup browser output)
+293D0637-6A70-4B4B-B333-7571C79EBEF6  Lenovo proprietary (PasswordCp data section; role not yet traced)
+2CF8CC1B-58DF-4646-8DEE-7CEFAB10F782  Setup browser protocol (PasswordCp; likely EFI_FORM_BROWSER2 or Phoenix equivalent)
+
+# ── CryptService DXE second hash path ────────────────────────────────────────
+
+C5A3095A-87F7-4AF8-B393-09CC4AF08739  Lenovo proprietary (CryptService DXE FUN_00003008; second hash entry point; role not yet traced)
+C0206BF0-6D0A-4988-B7E0-BF2FEB6D747D  Lenovo proprietary (CryptService DXE; related to C5A3095A path in FUN_00003008)
+
+# ── Standard UEFI ─────────────────────────────────────────────────────────────
+
+5B1B31A1-9562-11D2-8E3F-00A0C969723B  EFI_LOADED_IMAGE_PROTOCOL_GUID (standard UEFI 2.x)
