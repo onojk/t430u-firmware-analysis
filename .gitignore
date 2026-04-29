@@ -1,0 +1,27 @@
+# Vendor firmware dumps and derived artifacts — never commit these
+t430u/dumps/*
+!t430u/dumps/.gitkeep
+
+# Extracted firmware — local working data only
+t430u/extracted/*
+!t430u/extracted/.gitkeep
+
+# Ghidra working files — multi-GB binary projects
+t430u/ghidra-projects/*
+!t430u/ghidra-projects/.gitkeep
+
+# Ghidra working files anywhere in the tree
+*.gpr
+*.rep/
+*.lock
+*.lock~
+
+# Python cruft from old code
+__pycache__/
+*.pyc
+
+# Editor / OS junk
+.vscode/
+.idea/
+.DS_Store
+*.swp
