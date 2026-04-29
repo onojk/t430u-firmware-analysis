@@ -267,3 +267,17 @@ extracting more modules, which is a discrete next step.
 | `LenovoMailBoxSmm.efi` | EC mailbox protocol producer | Not yet extracted |
 | `LenovoSetupSecurityDxe.efi` | Security setup screen | Not yet extracted |
 | `LenovoHpmDxe.efi` | HDD password manager | Not yet extracted |
+
+
+## Final verification (added after initial commit)
+
+Confirmed by locating SHA-1's four round constants in the binary:
+
+  K1 0x5A827999 at 0x1ee0
+  K2 0x6ED9EBA1 at 0x1ee4
+  K3 0x8F1BBCDC at 0x1ee8
+  K4 0xCA62C1D6 at 0x1eec
+
+All four are contiguous (4 bytes apart, aligned). SHA-256 K[] table begins
+at 0x1ef0 immediately following. This places the algorithm identification
+beyond doubt.
