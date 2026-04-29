@@ -70,7 +70,9 @@ array we identified earlier:
 
 With this resolved, the full cryptographic story can finally be named.
 Every algorithm and key source has been traced. _See addendum below for
-the verified implementation details._## Addendum: SHA-1 implementation verified standard
+the verified implementation details._
+
+## Addendum: SHA-1 implementation verified standard
 
 Confirmed by direct disassembly of the Init function and inspection of the
 constant blob it references. SHA-1 in this module is plain FIPS 180-4 — no
