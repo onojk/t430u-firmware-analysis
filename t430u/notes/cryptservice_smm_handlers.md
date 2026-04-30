@@ -218,3 +218,54 @@ This protocol shares a module with the hash construction but is functionally ind
 3. **Reconcile the GUIDs.** `E3ABB023` and `E01FC710` are present in this module's `.text` GUID block but not installed by entry. Are they SMI command identifiers, or installed by another module that wraps these SMI calls behind protocol interfaces? Worth grepping the other DXE modules for both.
 
 4. **Resolve the architectural picture.** With Stage 1/Stage 2 collapsed to one construction + truncation, the original "two-stage hash pipeline" diagram in `password_cp_analysis.md` may need revision. Either the DXE-side caller invokes both lengths for different purposes (e.g. 8-byte for storage, 12-byte for AES key seeding), or one of the two is unused in the current firmware.
+
+## Addendum: salt resolution — DAT_e18 is permanently zero
+
+The "salt mystery" question above is resolved: there is no writer to `DAT_e18` anywhere in the firmware. The 10-byte buffer is set to zero once at module load by `FUN_000009c8` and never touched again.
+
+### Evidence
+
+In `LenovoCryptServiceSmm.efi`:
+
+- Total xrefs to `DAT_e18`: 2.
+- Writer: `FUN_000009c8` (zero-initialization, called once from entry at `0x8ca`).
+- Reader: `FUN_000009e4` (the salted-SHA-1 helper).
+- No other code in this module references the address. This holds even after manually disassembling SMI handlers `0x83`, `0x8F`, `0x90` (none of which touch the salt).
+
+In `LenovoSvpManagerSmm.efi`:
+
+- Module's entry point installs one protocol (`65FB555D`), locates four (`0DE8BACF` EC mailbox, `9F5E8C5E` SMI registry, `FE2965BB` gating event, `CDFCA3E8` unknown), and registers SMI handler `0x05`.
+- None of the located protocols give it access to `LenovoCryptServiceSmm.efi`'s memory.
+- No mechanism for cross-module writes to a fixed `.bss` address in another module exists in standard UEFI without an explicit pointer-passing protocol, and this module installs no such protocol.
+
+Conclusion: the salt is permanently zero in normal operation.
+
+### Cryptographic implication
+
+The construction documented above:
+
+    output = SHA-1( SHA-1(input)[0..7] || salt[0..10] )
+
+reduces with `salt = 0x00 × 10` to:
+
+    output = SHA-1( SHA-1(input)[0..7] || 0x00000000000000000000 )
+
+The round-2 SHA-1 therefore provides:
+
+- **Domain separation** — the round-2 input space is distinct from the round-1 input space, so the two values can be safely used in distinct contexts without collision.
+- **No additional entropy** — the salt contributes 0 bits of input variability.
+- **No per-machine binding** — the construction is identical on every T430u that runs this firmware version.
+
+For password verification, this means the hash digest stored against a given password is the same on every machine. The per-machine binding (if any) of the SVP subsystem must therefore live elsewhere — most likely in *what the digest is compared against* (e.g., a per-machine secret stored in EC-protected memory, or the comparison taking place inside the EC after a challenge/response), not in the hash construction itself.
+
+### What this opens up
+
+The architectural question now sharpens to: where is the per-machine binding for the SVP password subsystem, if not in the hash?
+
+Three candidates worth investigating:
+
+1. **The 8-byte CMOS region at `0xB0–0xB7`** managed by the `73E47354` protocol in `LenovoCryptServiceSmm.efi`. Used as input to AES key derivation in `LenovoCryptService.efi` per `cryptservice_aes_key_derivation.md`. Possibly a *different* per-machine secret used for AES rather than for password storage.
+2. **An EC-stored digest** that the SVP comparison is performed against. The EC's secret region is write-protected from the host, so this would explain the "per-machine binding lives outside the host firmware" pattern. `LenovoSvpManagerSmm.efi` locates the EC mailbox protocol `0DE8BACF` and could be reading a stored digest from it for comparison.
+3. **No per-machine binding at all** for the password hash — passwords are hashed identically on every machine, and the only per-machine state is the comparison target. This is plausible for OEM SVP designs of this era.
+
+Resolving which is the case requires reading the rest of `LenovoSvpManagerSmm.efi` (in particular SMI handler `0x05` at RVA `0x520` and the function `FUN_00000a8c` that gates the entry point) and tracing what gets compared against what.
